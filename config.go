@@ -120,6 +120,7 @@ type Config struct {
 	VideoCodecPreference string               `json:"video_codec_preference"`
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 	MqttConfig           *MQTTConfig          `json:"mqtt_config"`
+	LocalTrustedProxies  []string             `json:"local_trusted_proxies,omitempty"`
 }
 
 // GetUpdateAPIURL returns the update API URL

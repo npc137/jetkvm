@@ -66,7 +66,8 @@ type LocalDevice struct {
 }
 
 type DeviceStatus struct {
-	IsSetup bool `json:"isSetup"`
+	IsSetup bool   `json:"isSetup"`
+	Version string `json:"version"`
 }
 
 type SetupRequest struct {
@@ -101,6 +102,19 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
+
+	// Configure trusted proxies so that X-Real-IP / X-Forwarded-For headers from
+	// known upstream proxies (e.g. a management-plane access broker) are used when
+	// determining the client IP for rate-limiting. Defaults to loopback only when
+	// no proxies are configured.
+	trustedProxies := config.LocalTrustedProxies
+	if len(trustedProxies) == 0 {
+		trustedProxies = []string{"127.0.0.1", "::1"}
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		logger.Warn().Err(err).Msg("failed to set trusted proxies, falling back to default")
+	}
+
 	r.Use(gin_logger.SetLogger(
 		gin_logger.WithLogger(func(*gin.Context, zerolog.Logger) zerolog.Logger {
 			return *ginLogger
@@ -822,6 +836,7 @@ func handleDeviceStatus(c *gin.Context) {
 
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
+		Version: GetBuiltAppVersion(),
 	}
 
 	c.JSON(http.StatusOK, response)
