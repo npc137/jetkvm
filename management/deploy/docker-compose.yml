@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  # ── Management Backend API ──────────────────────────────────────────────────
+  management-backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ENTRA_TENANT_ID: "${ENTRA_TENANT_ID}"
+      ENTRA_CLIENT_ID: "${ENTRA_CLIENT_ID}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL}"
+      LISTEN_ADDR: ":8080"
+      DB_PATH: "/data/management.db"
+    volumes:
+      - management-data:/data
+    # Not exposed to the host; only reachable via Traefik's internal network.
+    networks:
+      - internal
+
+  # ── Management Dashboard UI ─────────────────────────────────────────────────
+  management-ui:
+    build:
+      context: ../ui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ── Traefik Reverse Proxy ────────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./traefik/traefik.yml:/etc/traefik/traefik.yml:ro"
+      - "./traefik/dynamic:/etc/traefik/dynamic:ro"
+      - "traefik-certs:/certs"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - internal
+      - external
+    depends_on:
+      - management-backend
+      - management-ui
+
+volumes:
+  management-data:
+  traefik-certs:
+
+networks:
+  internal:
+  external:
+    driver: bridge

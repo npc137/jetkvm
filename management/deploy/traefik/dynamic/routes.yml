@@ -1,0 +1,122 @@
+# Dynamic routing configuration for the JetKVM management plane.
+#
+# All traffic enters through Traefik. JetKVM device IPs are NEVER exposed to
+# browsers; only the management API and proxy paths are reachable externally.
+
+http:
+  # ── Routers ────────────────────────────────────────────────────────────────
+
+  routers:
+    # Management dashboard SPA
+    dashboard:
+      rule: "Host(`${MANAGEMENT_HOST}`) && PathPrefix(`/`)"
+      entryPoints: [websecure]
+      service: management-ui
+      tls:
+        certResolver: letsencrypt
+      priority: 1
+
+    # Management API
+    management-api:
+      rule: "Host(`${MANAGEMENT_HOST}`) && PathPrefix(`/api/`)"
+      entryPoints: [websecure]
+      service: management-backend
+      middlewares: [cors-headers]
+      tls:
+        certResolver: letsencrypt
+      priority: 10
+
+    # Token redemption — called by the browser after clicking Connect.
+    # No forward-auth here; the management-backend validates the token itself.
+    connect-token:
+      rule: "Host(`${MANAGEMENT_HOST}`) && PathPrefix(`/connect/`)"
+      entryPoints: [websecure]
+      service: management-backend
+      tls:
+        certResolver: letsencrypt
+      priority: 20
+
+    # JetKVM device proxy — only reachable after a valid connection token has
+    # been redeemed (the management-backend sets the authToken cookie before
+    # redirecting the browser here).
+    #
+    # Pattern: /proxy/{deviceIP}/...  → http://{deviceIP}/...
+    #
+    # Forward-auth validates that the request carries a valid JetKVM authToken
+    # by delegating to the management backend's internal endpoint.
+    jetkvm-proxy:
+      rule: "Host(`${MANAGEMENT_HOST}`) && PathPrefix(`/proxy/`)"
+      entryPoints: [websecure]
+      service: jetkvm-proxy-service
+      middlewares:
+        - strip-proxy-prefix
+        - jetkvm-forward-auth
+        - remove-frame-deny
+      tls:
+        certResolver: letsencrypt
+      priority: 30
+
+  # ── Services ──────────────────────────────────────────────────────────────
+
+  services:
+    management-backend:
+      loadBalancer:
+        servers:
+          - url: "http://management-backend:8080"
+
+    management-ui:
+      loadBalancer:
+        servers:
+          - url: "http://management-ui:3000"
+
+    # This service is a placeholder; the actual upstream is resolved dynamically
+    # via the strip-proxy-prefix middleware extracting the device IP from the
+    # path.  In production, replace with your device IP or a service-discovery
+    # mechanism.
+    jetkvm-proxy-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1"  # overridden per-request by the middleware
+
+  # ── Middlewares ────────────────────────────────────────────────────────────
+
+  middlewares:
+    # Strip the /proxy/{deviceIP} prefix before forwarding to the device.
+    strip-proxy-prefix:
+      stripPrefixRegex:
+        regex: ["^/proxy/[^/]+"]
+
+    # Forward-auth: the management backend validates that the caller holds a
+    # legitimate, active JetKVM session.  On success the backend adds
+    # X-JetKVM-Device-IP which Traefik uses to route the request.
+    jetkvm-forward-auth:
+      forwardAuth:
+        address: "http://management-backend:8080/api/internal/validate-session"
+        authResponseHeaders:
+          - "X-JetKVM-Device-IP"
+        trustForwardHeader: true
+
+    # Remove the X-Frame-Options: DENY header set by JetKVM so the device UI
+    # can be embedded in the management dashboard (optional; remove if using
+    # full-page redirect instead of iframe).
+    remove-frame-deny:
+      headers:
+        customResponseHeaders:
+          X-Frame-Options: ""
+
+    # CORS headers for the management API (the SPA is served from the same
+    # origin so this is mostly for development convenience).
+    cors-headers:
+      headers:
+        accessControlAllowOriginList:
+          - "https://${MANAGEMENT_HOST}"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - Authorization
+          - Content-Type
+        accessControlMaxAge: 86400
