@@ -15,7 +15,10 @@ import (
 	"github.com/jetkvm/management/middleware"
 )
 
-// tokenTTL is the lifetime of a connection token. The spec requires ≤ 60s.
+// tokenTTL is the lifetime of a connection token.
+// It is capped at 60 seconds per the security requirement: the token is
+// single-use and must expire quickly to minimise the window in which an
+// intercepted URL could be replayed by an attacker.
 const tokenTTL = 60 * time.Second
 
 // ConnectRequest initiates a connection to a device. It is called by the SPA
@@ -141,8 +144,9 @@ func RedeemToken(db *sql.DB) gin.HandlerFunc {
 		}
 
 		// Inject the JetKVM authToken as a cookie and redirect to the device root
-		// via the proxy path.
-		c.SetCookie("authToken", jetkvmAuthToken, 3600, "/", "", false, true)
+		// via the proxy path. The Secure flag is set to true; this service must
+		// always be served over HTTPS in production (enforced by the Traefik layer).
+		c.SetCookie("authToken", jetkvmAuthToken, 3600, "/", "", true, true)
 		proxyPath := "/proxy/" + url.PathEscape(deviceIP) + "/"
 		c.Redirect(http.StatusFound, proxyPath)
 	}

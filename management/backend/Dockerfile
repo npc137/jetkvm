@@ -5,6 +5,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+# CGO_ENABLED=0 is intentional: modernc.org/sqlite is a pure-Go SQLite
+# implementation and does not require CGO, enabling a fully static binary.
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /management-backend .
 
 # ── Runtime image ─────────────────────────────────────────────────────────────

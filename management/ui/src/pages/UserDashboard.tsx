@@ -4,7 +4,7 @@ import * as api from "../api/client";
 import type { Device } from "../api/types";
 
 function StatusBadge({ status }: { status: Device["status"] }) {
-  const colours: Record<Device["status"], string> = {
+  const colors: Record<Device["status"], string> = {
     online: "#22c55e",
     offline: "#ef4444",
     unknown: "#94a3b8",
@@ -16,7 +16,7 @@ function StatusBadge({ status }: { status: Device["status"] }) {
         width: 10,
         height: 10,
         borderRadius: "50%",
-        background: colours[status],
+        background: colors[status],
         marginRight: 6,
       }}
     />
